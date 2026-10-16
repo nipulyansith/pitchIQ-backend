@@ -1,0 +1,9 @@
+.stepper { display: flex; align-items: center; gap: var(--space-3); }
+.step { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; }
+.last { flex: none; }
+.dot { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-xs); font-weight: 600; background: var(--color-tint); color: var(--color-text-muted); }
+.active { background: var(--color-primary); color: #fff; }
+.label { font-size: var(--fs-sm); color: var(--color-text-muted); white-space: nowrap; }
+.currentLabel { color: var(--color-ink); font-weight: 600; }
+.line { flex: 1; height: 1px; background: var(--color-border); min-width: 16px; }
+@media (max-width: 720px) { .label { display: none; } .currentLabel { display: inline; } }

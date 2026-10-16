@@ -1,0 +1,7 @@
+.zone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); min-height: 300px; padding: var(--space-6); text-align: center; background: var(--color-surface); border: 1.5px dashed var(--color-border-strong); border-radius: var(--radius-lg); transition: border-color 0.15s, background-color 0.15s; }
+.dragging { border-color: var(--color-primary); background: var(--color-tint); }
+.error { border-color: var(--color-danger); }
+.iconWrap { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--color-tint); color: var(--color-primary); margin-bottom: var(--space-2); }
+.title { font-size: var(--fs-lg); font-weight: 500; }
+.hint { font-size: var(--fs-sm); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+.errorText { font-size: var(--fs-sm); color: var(--color-danger); }

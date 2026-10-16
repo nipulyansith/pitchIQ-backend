@@ -1,0 +1,52 @@
+.container {
+  padding-block: var(--space-7);
+}
+
+.header {
+  margin-bottom: var(--space-7);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.visual {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  background: var(--color-dark-2);
+}
+
+.photo {
+  height: 480px;
+  background: linear-gradient(160deg, #3b6b4f, #1f3d2e) center / cover no-repeat;
+}
+
+.caption {
+  padding: var(--space-6);
+  color: #fff;
+  min-height: 200px;
+}
+
+.formWrap {
+  max-width: 440px;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+  .photo {
+    height: 240px;
+  }
+  .formWrap {
+    max-width: none;
+  }
+}

@@ -1,0 +1,172 @@
+.container {
+  padding-block: var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.profileGrid {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: var(--space-5);
+}
+
+@media (max-width: 850px) {
+  .profileGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Profile summary card */
+.summaryCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.avatarLarge {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  margin-bottom: var(--space-4);
+}
+
+.userName {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.userEmail {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  margin-bottom: var(--space-3);
+}
+
+.badgeWrap {
+  margin-bottom: var(--space-4);
+}
+
+.userBio {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin-bottom: var(--space-5);
+}
+
+.settingsBtn {
+  margin-top: auto;
+}
+
+/* Personal details card */
+.detailsCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.cardTitle {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: var(--space-4);
+}
+
+.detailsList {
+  margin-bottom: var(--space-4);
+}
+
+.hintNote {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  margin-bottom: var(--space-5);
+}
+
+.editPersonalBtn {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+/* Current plan card */
+.planCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.planHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.planAthleteRate {
+  font-size: var(--fs-xs);
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-block: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.totalLabel {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.totalAmount {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.renewalText {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-5);
+}
+
+.planActions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: auto;
+}
+
+/* Account access card */
+.accessCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.accessDesc {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin-bottom: var(--space-5);
+}
+
+.accessActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: auto;
+  align-items: flex-start;
+}
+

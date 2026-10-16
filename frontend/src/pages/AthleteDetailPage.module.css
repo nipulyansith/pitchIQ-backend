@@ -1,0 +1,145 @@
+.container {
+  padding-block: var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.topGrid {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: var(--space-5);
+}
+
+@media (max-width: 850px) {
+  .topGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.athleteDetailsCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.cardTitle {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.cardSub {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.detailsList {
+  margin-bottom: var(--space-5);
+}
+
+.athleteActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: auto;
+}
+
+.chartCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.statSummaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--fs-sm);
+}
+
+.statLabel {
+  color: var(--color-text);
+}
+
+.statValue {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.statNote {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-3);
+  line-height: 1.4;
+}
+
+/* History & comparison card */
+.historyCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.historyHeader {
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.comparisonControls {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr auto;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+@media (max-width: 800px) {
+  .comparisonControls {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sessionSelect {
+  width: 100%;
+}
+
+.compareBtn {
+  height: 44px;
+}
+
+.actionLink {
+  color: var(--color-primary);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.actionLink:hover {
+  text-decoration: underline;
+}
+
+.historyFooter {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+
+.historyFooterNote {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+

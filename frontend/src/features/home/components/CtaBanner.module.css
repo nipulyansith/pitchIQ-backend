@@ -1,0 +1,4 @@
+.section { background: var(--color-dark-2); padding-block: var(--space-8); }
+.inner { display: flex; justify-content: space-between; align-items: center; gap: var(--space-5); flex-wrap: wrap; }
+.title { color: #fff; font-size: clamp(1.9rem, 3.5vw, 2.5rem); font-weight: 400; margin-bottom: var(--space-4); }
+.text { color: #b6c9bf; }

@@ -1,0 +1,28 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
+  padding: var(--space-5);
+}
+
+.label {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.value {
+  font-size: clamp(1.8rem, 3vw, 2.25rem);
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.1;
+  margin-block: var(--space-2);
+}
+
+.description {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+

@@ -1,0 +1,345 @@
+.container {
+  padding-block: var(--space-7);
+}
+
+.stateSwitcher {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-pill);
+  width: fit-content;
+}
+
+.switchLabel {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.switchBtn {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.switchBtn:hover {
+  color: var(--color-ink);
+}
+
+.activeSwitch {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.pageContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.statsGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+}
+
+.statsGrid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-5);
+}
+
+@media (max-width: 900px) {
+  .statsGrid3,
+  .statsGrid4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 550px) {
+  .statsGrid3,
+  .statsGrid4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Onboarding (Image 1) styles */
+.mainGrid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-5);
+}
+
+@media (max-width: 850px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.firstDeliveryCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-7) var(--space-6);
+}
+
+.uploadIconWrap {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  margin-bottom: var(--space-4);
+  color: var(--color-primary);
+}
+
+.cardTitle {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: var(--space-2);
+}
+
+.cardSubtitle {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  max-width: 480px;
+  margin-bottom: var(--space-5);
+  line-height: 1.5;
+}
+
+.uploadBtn {
+  margin-bottom: var(--space-4);
+}
+
+.flowBreadcrumb {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-5);
+}
+
+.guidanceBtn {
+  margin-top: auto;
+}
+
+.checklistCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--space-6);
+}
+
+.checklist {
+  margin-block: var(--space-4);
+}
+
+.checkDone {
+  color: var(--color-primary);
+}
+
+.circlePending {
+  color: var(--color-border-strong);
+}
+
+.checklistActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.subscriptionBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-6);
+}
+
+.bannerTitle {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 4px;
+}
+
+.bannerText {
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+}
+
+@media (max-width: 700px) {
+  .subscriptionBanner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Squad view (Image 3) styles */
+.twoColumnGrid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: var(--space-5);
+}
+
+@media (max-width: 850px) {
+  .twoColumnGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chartCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+
+.cardSectionTitle {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.cardHeaderSub {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.chartNote {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-3);
+  line-height: 1.4;
+}
+
+.highlightStatRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--fs-sm);
+}
+
+.highlightName {
+  color: var(--color-text);
+}
+
+.highlightValue {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.teamOverviewCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.teamHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.teamDetails {
+  margin-bottom: var(--space-4);
+}
+
+.teamDescription {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-5);
+}
+
+.teamActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: auto;
+}
+
+/* Recent analyses section */
+.recentAnalysesCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.recentHeader {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.highlightDeliveryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.videoMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.videoThumb {
+  width: 90px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.videoFilename {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.videoAthlete {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.tableActionLink {
+  color: var(--color-primary);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.tableActionLink:hover {
+  text-decoration: underline;
+}
+
+.recentFooter {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+

@@ -1,0 +1,54 @@
+.chartContainer {
+  width: 100%;
+  padding-block: var(--space-4);
+}
+
+.barsArea {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.barColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  max-width: 90px;
+  height: 100%;
+}
+
+.valueLabel {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: var(--space-2);
+}
+
+.bar {
+  width: 100%;
+  min-width: 36px;
+  max-width: 64px;
+  border-radius: 4px;
+  transition: height 0.3s ease, background-color 0.2s ease;
+}
+
+.normalBar {
+  background: var(--color-chart-bar, #a5c4b5);
+}
+
+.activeBar {
+  background: var(--color-primary);
+}
+
+.bottomLabel {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+  white-space: nowrap;
+  text-align: center;
+}
+

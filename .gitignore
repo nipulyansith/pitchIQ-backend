@@ -1,0 +1,43 @@
+# === Ignore Output Folders ===
+output/
+outputs/
+results/
+
+# === Ignore Video Files ===
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.avi
+*.mkv
+
+# === Ignore Temporary / System Files ===
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# === Ignore Environment & Config Files ===
+.env
+.vscode/
+.idea/
+venv/
+.venv/
+
+# === Local application database and storage ===
+storage/*.db
+storage/*.db-shm
+storage/*.db-wal
+
+# === PitchIQ generated storage ===
+storage/*.db
+storage/*.db-shm
+storage/*.db-wal
+storage/uploads/*
+storage/results/*
+analysis_engine/output/
+analysis_engine/*.xlsx
+
+# === Frontend dependencies and build output ===
+frontend/node_modules/
+frontend/dist/

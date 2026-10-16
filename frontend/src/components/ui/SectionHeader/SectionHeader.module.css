@@ -1,0 +1,7 @@
+.header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-5); }
+.eyebrow { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-primary); margin-bottom: var(--space-3); }
+.title { font-size: clamp(1.9rem, 3.5vw, 2.5rem); }
+.description { margin-top: var(--space-3); color: var(--color-text-muted); }
+.light .eyebrow { color: #cfe6dc; }
+.light .title { color: #fff; }
+.light .description { color: #b6c9bf; }
