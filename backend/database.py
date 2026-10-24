@@ -174,18 +174,100 @@ def database_connection() -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
-def create_athlete(name: str, playing_level: str | None = None) -> int:
-    """Create an athlete and return its database ID."""
+def create_athlete(
+    coach_id: int,
+    name: str,
+    playing_level: str | None = None,
+) -> int:
+    """Create an athlete owned by a coach and return its database ID."""
+    cleaned_name = name.strip()
+    if not cleaned_name:
+        raise ValueError("Athlete name cannot be empty")
+
+    with database_connection() as connection:
+        coach = connection.execute(
+            "SELECT id FROM users WHERE id = ? AND role = 'coach'",
+            (coach_id,),
+        ).fetchone()
+        if not coach:
+            raise ValueError("A valid coach is required")
+        cursor = connection.execute(
+            "INSERT INTO athletes (user_id, name, playing_level) VALUES (?, ?, ?)",
+            (coach_id, cleaned_name, playing_level),
+        )
+        return int(cursor.lastrowid)
+
+
+def get_athletes(coach_id: int) -> list[dict[str, Any]]:
+    """Return all athletes owned by a coach."""
+    with database_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, user_id, name, playing_level, created_at
+            FROM athletes
+            WHERE user_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (coach_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_athlete(athlete_id: int, coach_id: int) -> dict[str, Any] | None:
+    """Return one athlete only if it belongs to the coach."""
+    with database_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, user_id, name, playing_level, created_at
+            FROM athletes
+            WHERE id = ? AND user_id = ?
+            """,
+            (athlete_id, coach_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_athlete(athlete_id: int, coach_id: int) -> bool:
+    """Delete one athlete only if it belongs to the coach."""
+    with database_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM athletes WHERE id = ? AND user_id = ?",
+            (athlete_id, coach_id),
+        )
+    return cursor.rowcount > 0
+
+
+def update_athlete(
+    athlete_id: int,
+    coach_id: int,
+    name: str,
+    playing_level: str | None = None,
+) -> dict[str, Any] | None:
+    """Update an athlete only if it belongs to the coach."""
     cleaned_name = name.strip()
     if not cleaned_name:
         raise ValueError("Athlete name cannot be empty")
 
     with database_connection() as connection:
         cursor = connection.execute(
-            "INSERT INTO athletes (name, playing_level) VALUES (?, ?)",
-            (cleaned_name, playing_level),
+            """
+            UPDATE athletes
+            SET name = ?, playing_level = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (cleaned_name, playing_level, athlete_id, coach_id),
         )
-        return int(cursor.lastrowid)
+        if cursor.rowcount == 0:
+            return None
+        row = connection.execute(
+            """
+            SELECT id, user_id, name, playing_level, created_at
+            FROM athletes
+            WHERE id = ? AND user_id = ?
+            """,
+            (athlete_id, coach_id),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def create_user(email: str, password: str, display_name: str = "", role: str = "coach") -> int:
@@ -262,6 +344,13 @@ def create_analysis_session(
 ) -> None:
     """Persist a new analysis session."""
     with database_connection() as connection:
+        if athlete_id is not None:
+            athlete = connection.execute(
+                "SELECT id FROM athletes WHERE id = ? AND user_id = ?",
+                (athlete_id, user_id),
+            ).fetchone()
+            if not athlete:
+                raise ValueError("Athlete does not belong to this coach")
         connection.execute(
             """
             INSERT INTO analysis_sessions (id, user_id, athlete_id, video_name)
@@ -271,14 +360,48 @@ def create_analysis_session(
         )
 
 
-def get_analysis_session(session_id: str) -> dict[str, Any] | None:
-    """Return one session as a normal dictionary, or None if missing."""
+def get_analysis_session(
+    session_id: str,
+    user_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Return one session, optionally restricted to its owning user."""
     with database_connection() as connection:
-        row = connection.execute(
-            "SELECT * FROM analysis_sessions WHERE id = ?",
-            (session_id,),
-        ).fetchone()
+        if user_id is None:
+            row = connection.execute(
+                "SELECT * FROM analysis_sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                "SELECT * FROM analysis_sessions WHERE id = ? AND user_id = ?",
+                (session_id, user_id),
+            ).fetchone()
     return dict(row) if row else None
+
+
+def list_analysis_sessions(user_id: int) -> list[dict[str, Any]]:
+    """Return all analysis sessions belonging to one user."""
+    with database_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM analysis_sessions
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_analysis_session(session_id: str, user_id: int) -> bool:
+    """Delete a user's session and its dependent records."""
+    with database_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM analysis_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        )
+    return cursor.rowcount > 0
 
 
 if __name__ == "__main__":

@@ -31,10 +31,15 @@ import numpy as np
 # The current SESSIONS dictionary remains active during the migration.
 from backend.database import (
     create_analysis_session,
+    delete_analysis_session,
+    get_athlete,
     get_user_by_id,
+    get_analysis_session,
     initialize_database,
+    list_analysis_sessions,
 )
 from backend.routes.auth import auth_bp
+from backend.routes.athletes import create_athletes_blueprint
 from backend.routes.sessions import create_sessions_blueprint
 
 # ============================================================================
@@ -121,6 +126,9 @@ def coach_required(view):
             return jsonify({'success': False, 'error': 'Player analysis is under development'}), 403
         return view(*args, **kwargs)
     return wrapped
+
+
+app.register_blueprint(create_athletes_blueprint(coach_required))
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_ROOT
@@ -211,9 +219,13 @@ app.register_blueprint(
         dependencies={
             "create_session": create_session,
             "persist_session": create_analysis_session,
+            "validate_athlete": get_athlete,
             "sessions": SESSIONS,
             "results_dir": RESULTS_DIR,
             "sanitize_for_json": sanitize_for_json,
+            "get_persisted_session": get_analysis_session,
+            "list_persisted_sessions": list_analysis_sessions,
+            "delete_persisted_session": delete_analysis_session,
         },
         coach_required=coach_required,
     )
