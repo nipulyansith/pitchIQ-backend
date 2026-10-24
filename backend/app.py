@@ -35,6 +35,7 @@ from backend.database import (
     initialize_database,
 )
 from backend.routes.auth import auth_bp
+from backend.routes.sessions import create_sessions_blueprint
 
 # ============================================================================
 # Custom JSON Encoder to handle NaN and Infinity values
@@ -205,149 +206,18 @@ def create_session(video_name=None):
     }
     return session_id
 
-@app.route('/api/session/create', methods=['POST'])
-@coach_required
-def api_create_session():
-    """Create new analysis session"""
-    try:
-        session_id = create_session()
-        try:
-            # Dual-write during migration: keep the current in-memory session
-            # and persist a database record for restart-safe recovery later.
-            create_analysis_session(
-                session_id=session_id,
-                user_id=session.get('user_id'),
-            )
-        except Exception as db_error:
-            # Do not break the currently working API while the database layer
-            # is being introduced. The in-memory session remains usable.
-            app.logger.exception("Could not persist session %s: %s", session_id, db_error)
-        return jsonify({
-            'success': True,
-            'session_id': session_id,
-            'message': 'Session created successfully'
-        }), 201
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/session/<session_id>', methods=['GET'])
-@coach_required
-def api_get_session(session_id):
-    """Get session details"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    session = SESSIONS[session_id].copy()
-    return jsonify({'success': True, 'session': session}), 200
-
-@app.route('/api/session/<session_id>', methods=['DELETE'])
-@coach_required
-def api_delete_session(session_id):
-    """Delete session and cleanup"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    try:
-        result_folder = SESSIONS[session_id].get('result_folder', session_id)
-        session_path = RESULTS_DIR / result_folder
-        if session_path.exists():
-            shutil.rmtree(session_path)
-        del SESSIONS[session_id]
-        return jsonify({'success': True, 'message': 'Session deleted'}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/sessions', methods=['GET'])
-@coach_required
-def api_list_sessions():
-    """List all previous sessions with basic data"""
-    try:
-        sessions_list = []
-        
-        # Get sessions from memory
-        for session_id, session in SESSIONS.items():
-            # Use video_name for display if available, otherwise use result_folder
-            display_name = session.get('video_name') or session.get('result_folder', session_id)
-            session_data = {
-                'session_id': session_id,
-                'display_name': display_name,
-                'created_at': session.get('created_at'),
-                'status': session.get('status'),
-                'bowling_arm': session.get('bowling_arm'),
-                'results': session.get('results')
-            }
-            sessions_list.append(session_data)
-        
-        # Also load completed sessions from disk that aren't in memory
-        if RESULTS_DIR.exists():
-            for session_dir in RESULTS_DIR.iterdir():
-                if session_dir.is_dir():
-                    folder_name = session_dir.name
-                    # Skip if already in memory
-                    if any(s['result_folder'] == folder_name for s in [SESSIONS.get(sid) for sid in SESSIONS]):
-                        continue
-                    
-                    # Try to load from disk
-                    analysis_file = session_dir / "analysis_results.json"
-                    if analysis_file.exists():
-                        try:
-                            with open(analysis_file) as f:
-                                analysis_data = sanitize_for_json(json.load(f))
-                            
-                            # Extract bowling arm and results
-                            results = {}
-                            if 'results' in analysis_data:
-                                r = analysis_data['results']
-                                results = {
-                                    'stride_duration': r.get('cadence'),
-                                    'delivery_stride': r.get('stride'),
-                                    'elbow_flexion': r.get('elbow'),
-                                    'knee_flexion': r.get('knee'),
-                                    'head_position': r.get('head'),
-                                    'wrist_velocity': r.get('wrist')
-                                }
-                            
-                            session_data = {
-                                'session_id': folder_name,
-                                'display_name': folder_name,
-                                'created_at': analysis_data.get('timestamp', session_dir.stat().st_mtime),
-                                'status': 'completed',
-                                'bowling_arm': analysis_data.get('bowling_arm'),
-                                'results': results
-                            }
-                            sessions_list.append(session_data)
-                        except Exception as e:
-                            print(f"Warning: Could not load session {session_id}: {str(e)}")
-        
-        # Sort by creation date (newest first)
-        # Convert all created_at to timestamps for proper sorting
-        def get_sort_key(session):
-            created_at = session.get('created_at', '')
-            if isinstance(created_at, str):
-                try:
-                    # Parse ISO format string to timestamp
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                    return dt.timestamp()
-                except:
-                    return 0
-            elif isinstance(created_at, (int, float)):
-                return created_at
-            else:
-                return 0
-        
-        sessions_list.sort(key=get_sort_key, reverse=True)
-        
-        return jsonify({
-            'success': True,
-            'sessions': sessions_list,
-            'count': len(sessions_list)
-        }), 200
-    except Exception as e:
-        print(f"Error listing sessions: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+app.register_blueprint(
+    create_sessions_blueprint(
+        dependencies={
+            "create_session": create_session,
+            "persist_session": create_analysis_session,
+            "sessions": SESSIONS,
+            "results_dir": RESULTS_DIR,
+            "sanitize_for_json": sanitize_for_json,
+        },
+        coach_required=coach_required,
+    )
+)
 
 # ============================================================================
 # API Routes - Video Upload
