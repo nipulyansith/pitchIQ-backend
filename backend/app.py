@@ -252,35 +252,6 @@ app.register_blueprint(
 # ============================================================================
 
 # ============================================================================
-# API Routes - Bowling Arm Selection
-# ============================================================================
-
-@app.route('/api/bowling-arm/<session_id>', methods=['POST'])
-@coach_required
-def api_set_bowling_arm(session_id):
-    """Set bowling arm (R or L)"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    data = request.get_json()
-    arm = data.get('arm', '').upper()
-    
-    if arm not in ['R', 'L']:
-        return jsonify({'success': False, 'error': 'Arm must be R or L'}), 400
-    
-    SESSIONS[session_id]['bowling_arm'] = arm
-    SESSIONS[session_id]['status'] = 'arm_selected'
-    
-    # Determine front knee
-    front_knee = 'L' if arm == 'R' else 'R'
-    
-    return jsonify({
-        'success': True,
-        'message': f'Bowling arm set to {arm}',
-        'front_knee': front_knee
-    }), 200
-
-# ============================================================================
 # API Routes - Calibration
 # ============================================================================
 

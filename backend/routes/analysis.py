@@ -62,4 +62,38 @@ def create_analysis_blueprint(*, dependencies, coach_required):
         except Exception as error:
             return jsonify({"success": False, "error": f"Upload failed: {error}"}), 500
 
+    @blueprint.post("/api/bowling-arm/<session_id>")
+    @coach_required
+    def set_bowling_arm(session_id):
+        user_id = browser_session["user_id"]
+        persisted = dependencies["get_persisted_session"](session_id, user_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+        if session_id not in dependencies["sessions"]:
+            return jsonify({"success": False, "error": "Session is not active"}), 409
+
+        data = request.get_json(silent=True) or {}
+        arm = str(data.get("arm", "")).upper()
+        if arm not in {"R", "L"}:
+            return jsonify({"success": False, "error": "Arm must be R or L"}), 400
+
+        updated = dependencies["update_persisted_session"](
+            session_id,
+            user_id,
+            bowling_arm=arm,
+            status="arm_selected",
+        )
+        if not updated:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+
+        dependencies["sessions"][session_id]["bowling_arm"] = arm
+        dependencies["sessions"][session_id]["status"] = "arm_selected"
+        front_knee = "L" if arm == "R" else "R"
+        return jsonify({
+            "success": True,
+            "message": f"Bowling arm set to {arm}",
+            "session_id": session_id,
+            "front_knee": front_knee,
+        }), 200
+
     return blueprint
