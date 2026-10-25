@@ -404,6 +404,45 @@ def delete_analysis_session(session_id: str, user_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+def update_analysis_session(
+    session_id: str,
+    user_id: int,
+    **fields: Any,
+) -> dict[str, Any] | None:
+    """Update allowed session fields for the owning coach."""
+    allowed_fields = {
+        "video_name",
+        "video_path",
+        "bowling_arm",
+        "status",
+        "progress",
+        "error_message",
+        "result_path",
+        "completed_at",
+    }
+    updates = {key: value for key, value in fields.items() if key in allowed_fields}
+    if not updates:
+        return get_analysis_session(session_id, user_id)
+
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = [updates[key] for key in updates]
+    values.extend([session_id, user_id])
+
+    with database_connection() as connection:
+        cursor = connection.execute(
+            f"UPDATE analysis_sessions SET {assignments} "
+            "WHERE id = ? AND user_id = ?",
+            values,
+        )
+        if cursor.rowcount == 0:
+            return None
+        row = connection.execute(
+            "SELECT * FROM analysis_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 if __name__ == "__main__":
     path = initialize_database()
     print(f"Database initialized: {path}")

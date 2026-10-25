@@ -33,12 +33,14 @@ from backend.database import (
     create_analysis_session,
     delete_analysis_session,
     get_athlete,
-    get_user_by_id,
     get_analysis_session,
+    get_user_by_id,
     initialize_database,
     list_analysis_sessions,
+    update_analysis_session,
 )
 from backend.routes.auth import auth_bp
+from backend.routes.analysis import create_analysis_blueprint
 from backend.routes.athletes import create_athletes_blueprint
 from backend.routes.sessions import create_sessions_blueprint
 
@@ -231,90 +233,23 @@ app.register_blueprint(
     )
 )
 
+app.register_blueprint(
+    create_analysis_blueprint(
+        dependencies={
+            "get_persisted_session": get_analysis_session,
+            "update_persisted_session": update_analysis_session,
+            "sessions": SESSIONS,
+            "upload_dir": UPLOAD_DIR,
+            "allowed_extensions": ALLOWED_EXTENSIONS,
+            "max_file_size": MAX_FILE_SIZE,
+        },
+        coach_required=coach_required,
+    )
+)
+
 # ============================================================================
 # API Routes - Video Upload
 # ============================================================================
-
-@app.route('/api/upload/<session_id>', methods=['POST'])
-@coach_required
-def api_upload_video(session_id):
-    """Upload video file"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    if 'video' not in request.files:
-        return jsonify({'success': False, 'error': 'No video file provided'}), 400
-    
-    file = request.files['video']
-    if file.filename == '':
-        return jsonify({'success': False, 'error': 'No file selected'}), 400
-    
-    if not allowed_file(file.filename):
-        return jsonify({'success': False, 'error': 'Invalid file format'}), 400
-    
-    if file.content_length > MAX_FILE_SIZE:
-        return jsonify({'success': False, 'error': 'File too large'}), 400
-    
-    try:
-        # Check if video_name was provided in the upload
-        video_name = request.form.get('video_name', '').strip() if 'video_name' in request.form else None
-        
-        # If video_name provided but session doesn't have one, update the result folder
-        if video_name and not SESSIONS[session_id]['video_name']:
-            unique_video_name = resolve_unique_video_name(video_name)
-            if unique_video_name:
-                # Move/create the new result folder
-                old_folder = RESULTS_DIR / SESSIONS[session_id]['result_folder']
-                new_folder = RESULTS_DIR / unique_video_name
-                
-                if old_folder.exists() and not new_folder.exists():
-                    old_folder.rename(new_folder)
-                    SESSIONS[session_id]['video_name'] = unique_video_name
-                    SESSIONS[session_id]['result_folder'] = unique_video_name
-                elif not new_folder.exists():
-                    new_folder.mkdir(exist_ok=True)
-                    SESSIONS[session_id]['video_name'] = unique_video_name
-                    SESSIONS[session_id]['result_folder'] = unique_video_name
-        
-        # Save video
-        filename = secure_filename(f"{session_id}_{datetime.now().timestamp()}.{file.filename.rsplit('.', 1)[1].lower()}")
-        video_path = UPLOAD_DIR / filename
-        file.save(str(video_path))
-        
-        # Verify video
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            video_path.unlink()
-            return jsonify({'success': False, 'error': 'Invalid video file'}), 400
-        
-        # Get video info
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap.release()
-        
-        # Update session
-        SESSIONS[session_id]['video_path'] = str(video_path)
-        SESSIONS[session_id]['status'] = 'video_uploaded'
-        
-        return jsonify({
-            'success': True,
-            'message': 'Video uploaded successfully',
-            'video_info': {
-                'filename': filename,
-                'fps': fps,
-                'frame_count': frame_count,
-                'width': width,
-                'height': height,
-                'duration_seconds': frame_count / fps if fps > 0 else 0
-            }
-        }), 200
-    
-    except Exception as e:
-        if 'video_path' in locals() and video_path.exists():
-            video_path.unlink()
-        return jsonify({'success': False, 'error': f'Upload failed: {str(e)}'}), 500
 
 # ============================================================================
 # API Routes - Bowling Arm Selection
