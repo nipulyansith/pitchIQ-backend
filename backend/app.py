@@ -34,16 +34,25 @@ from backend.database import (
     delete_analysis_session,
     get_athlete,
     get_analysis_session,
+    get_generated_files,
+    get_metric_results,
     get_user_by_id,
     initialize_database,
     list_analysis_sessions,
+    mark_session_completed,
+    mark_session_failed,
+    mark_session_processing,
+    upsert_generated_file,
+    upsert_metric_result,
     upsert_calibration,
+    update_session_progress,
     update_analysis_session,
 )
 from backend.routes.auth import auth_bp
 from backend.routes.analysis import create_analysis_blueprint
 from backend.routes.athletes import create_athletes_blueprint
 from backend.routes.sessions import create_sessions_blueprint
+from backend.services.analysis_service import start_analysis_job
 
 # ============================================================================
 # Custom JSON Encoder to handle NaN and Infinity values
@@ -240,6 +249,23 @@ app.register_blueprint(
             "get_persisted_session": get_analysis_session,
             "update_persisted_session": update_analysis_session,
             "upsert_calibration": upsert_calibration,
+            "start_analysis": lambda session_id, user_id: start_analysis_job(
+                session_id=session_id,
+                user_id=user_id,
+                sessions=SESSIONS,
+                worker=lambda active_session_id: process_video_async(active_session_id),
+                mark_processing=mark_session_processing,
+                mark_completed=mark_session_completed,
+                mark_failed=mark_session_failed,
+                results_dir=RESULTS_DIR,
+                save_metric=upsert_metric_result,
+                save_file=upsert_generated_file,
+            ),
+            "update_session_progress": update_session_progress,
+            "get_session_path": get_session_path,
+            "sanitize_for_json": sanitize_for_json,
+            "get_metric_results": get_metric_results,
+            "get_generated_files": get_generated_files,
             "sessions": SESSIONS,
             "upload_dir": UPLOAD_DIR,
             "results_dir": RESULTS_DIR,
@@ -257,42 +283,6 @@ app.register_blueprint(
 # ============================================================================
 # API Routes - Analysis Processing
 # ============================================================================
-
-@app.route('/api/process/<session_id>', methods=['POST'])
-@coach_required
-def api_process_video(session_id):
-    """Start video processing"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    session = SESSIONS[session_id]
-    
-    # Validate session state
-    if not session['video_path']:
-        return jsonify({'success': False, 'error': 'No video uploaded'}), 400
-    
-    if not session['bowling_arm']:
-        return jsonify({'success': False, 'error': 'Bowling arm not selected'}), 400
-    
-    if not session['calibration_top'] or not session['calibration_bottom']:
-        return jsonify({'success': False, 'error': 'Calibration not set'}), 400
-    
-    # Start processing in background
-    SESSIONS[session_id]['status'] = 'processing'
-    SESSIONS[session_id]['progress'] = 0
-    
-    thread = threading.Thread(
-        target=process_video_async,
-        args=(session_id,)
-    )
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({
-        'success': True,
-        'message': 'Processing started',
-        'session_id': session_id
-    }), 202
 
 def process_video_async(session_id):
     """Process video asynchronously"""
@@ -565,88 +555,9 @@ def collect_results(session_id):
     
     return results
 
-@app.route('/api/progress/<session_id>', methods=['GET'])
-@coach_required
-def api_get_progress(session_id):
-    """Get processing progress"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    session = SESSIONS[session_id]
-    return jsonify({
-        'success': True,
-        'status': session['status'],
-        'progress': session['progress'],
-        'error': session['error']
-    }), 200
-
 # ============================================================================
 # API Routes - Results Retrieval
 # ============================================================================
-
-@app.route('/api/results/<session_id>', methods=['GET'])
-@coach_required
-def api_get_results(session_id):
-    """Get all analysis results"""
-    # First check in-memory sessions
-    if session_id in SESSIONS:
-        session = SESSIONS[session_id]
-        
-        if session['status'] != 'completed':
-            return jsonify({
-                'success': False,
-                'error': f'Analysis not completed. Status: {session["status"]}'
-            }), 400
-        
-        return jsonify({
-            'success': True,
-            'results': sanitize_for_json(session['results'])
-        }), 200
-    
-    # If not in memory, try loading from disk
-    session_path = get_session_path(session_id)
-    analysis_file = session_path / "analysis_results.json"
-    
-    if not analysis_file.exists():
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    try:
-        print(f"📂 Loading session {session_id} results from disk...")
-        with open(analysis_file) as f:
-            analysis_data = sanitize_for_json(json.load(f))
-        
-        # Extract results from analysis data
-        results = {
-            'stride_duration': None,
-            'delivery_stride': None,
-            'elbow_flexion': None,
-            'knee_flexion': None,
-            'head_position': None,
-            'wrist_velocity': None,
-            'videos': {},
-            'raw_data': {}
-        }
-        
-        if 'results' in analysis_data:
-            r = analysis_data['results']
-            if r.get('cadence'): results['stride_duration'] = r['cadence']
-            if r.get('stride'): results['delivery_stride'] = r['stride']
-            if r.get('elbow'): results['elbow_flexion'] = r['elbow']
-            if r.get('knee'): results['knee_flexion'] = r['knee']
-            if r.get('head'): results['head_position'] = r['head']
-            if r.get('wrist'): results['wrist_velocity'] = r['wrist']
-        
-        print(f"✅ Loaded results from disk for session {session_id}")
-        return jsonify({
-            'success': True,
-            'results': results
-        }), 200
-        
-    except Exception as e:
-        print(f"❌ Error loading results: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': f'Failed to load results: {str(e)}'}), 500
 
 @app.route('/api/results/<session_id>/stride', methods=['GET'])
 @coach_required

@@ -7,6 +7,7 @@ It gives us a persistent foundation before migrating the existing API routes.
 from __future__ import annotations
 
 import sqlite3
+import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -581,6 +582,156 @@ def mark_session_failed(
         status="failed",
         error_message=cleaned_error[:2000],
     )
+
+
+def upsert_metric_result(
+    session_id: str,
+    user_id: int,
+    metric_name: str,
+    *,
+    value: float | None = None,
+    unit: str | None = None,
+    event_name: str | None = None,
+    event_frame: int | None = None,
+    status: str = "measured",
+    confidence_level: str | None = None,
+    confidence_score: float | None = None,
+    confidence_reasons: list[str] | None = None,
+    raw_result: Any = None,
+) -> dict[str, Any] | None:
+    """Create or replace one metric result for an owned session."""
+    if not metric_name.strip():
+        raise ValueError("Metric name cannot be empty")
+    if confidence_score is not None and not 0 <= confidence_score <= 1:
+        raise ValueError("Confidence score must be between 0 and 1")
+
+    raw_json = json.dumps(raw_result, allow_nan=False) if raw_result is not None else None
+    reasons_json = (
+        json.dumps(confidence_reasons, allow_nan=False)
+        if confidence_reasons is not None
+        else None
+    )
+    with database_connection() as connection:
+        owner = connection.execute(
+            "SELECT id FROM analysis_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+        if not owner:
+            return None
+        connection.execute(
+            """
+            INSERT INTO metric_results (
+                session_id, metric_name, value, unit, event_name, event_frame,
+                status, confidence_level, confidence_score, confidence_reasons,
+                raw_result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, metric_name) DO UPDATE SET
+                value = excluded.value,
+                unit = excluded.unit,
+                event_name = excluded.event_name,
+                event_frame = excluded.event_frame,
+                status = excluded.status,
+                confidence_level = excluded.confidence_level,
+                confidence_score = excluded.confidence_score,
+                confidence_reasons = excluded.confidence_reasons,
+                raw_result_json = excluded.raw_result_json,
+                created_at = CURRENT_TIMESTAMP
+            """,
+            (
+                session_id,
+                metric_name,
+                value,
+                unit,
+                event_name,
+                event_frame,
+                status,
+                confidence_level,
+                confidence_score,
+                reasons_json,
+                raw_json,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM metric_results WHERE session_id = ? AND metric_name = ?",
+            (session_id, metric_name),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_generated_file(
+    session_id: str,
+    user_id: int,
+    file_type: str,
+    file_path: str,
+) -> dict[str, Any] | None:
+    """Create or replace a generated file record for an owned session."""
+    with database_connection() as connection:
+        owner = connection.execute(
+            "SELECT id FROM analysis_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+        if not owner:
+            return None
+        connection.execute(
+            """
+            INSERT INTO generated_files (session_id, file_type, file_path)
+            VALUES (?, ?, ?)
+            ON CONFLICT(session_id, file_type) DO UPDATE SET
+                file_path = excluded.file_path,
+                created_at = CURRENT_TIMESTAMP
+            """,
+            (session_id, file_type, file_path),
+        )
+        row = connection.execute(
+            "SELECT * FROM generated_files WHERE session_id = ? AND file_type = ?",
+            (session_id, file_type),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_metric_results(session_id: str, user_id: int) -> list[dict[str, Any]]:
+    """Return persisted metrics for an owned analysis session."""
+    with database_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT m.*
+            FROM metric_results m
+            JOIN analysis_sessions s ON s.id = m.session_id
+            WHERE m.session_id = ? AND s.user_id = ?
+            ORDER BY m.metric_name
+            """,
+            (session_id, user_id),
+        ).fetchall()
+
+    results = []
+    for row in rows:
+        item = dict(row)
+        raw_json = item.get("raw_result_json")
+        if raw_json:
+            try:
+                item["raw_result"] = json.loads(raw_json)
+            except json.JSONDecodeError:
+                item["raw_result"] = None
+        else:
+            item["raw_result"] = None
+        results.append(item)
+    return results
+
+
+def get_generated_files(session_id: str, user_id: int) -> list[dict[str, Any]]:
+    """Return persisted generated files for an owned analysis session."""
+    with database_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT f.*
+            FROM generated_files f
+            JOIN analysis_sessions s ON s.id = f.session_id
+            WHERE f.session_id = ? AND s.user_id = ?
+            ORDER BY f.file_type
+            """,
+            (session_id, user_id),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 if __name__ == "__main__":

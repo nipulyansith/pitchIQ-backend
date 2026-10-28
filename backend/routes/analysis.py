@@ -100,6 +100,95 @@ def create_analysis_blueprint(*, dependencies, coach_required):
             "front_knee": front_knee,
         }), 200
 
+    @blueprint.post("/api/process/<session_id>")
+    @coach_required
+    def process_video(session_id):
+        user_id = browser_session["user_id"]
+        persisted = dependencies["get_persisted_session"](session_id, user_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+
+        active = dependencies["sessions"].get(session_id)
+        if not active:
+            return jsonify({"success": False, "error": "Session is not active"}), 409
+        if not active.get("video_path"):
+            return jsonify({"success": False, "error": "No video uploaded"}), 400
+        if not active.get("bowling_arm"):
+            return jsonify({"success": False, "error": "Bowling arm not selected"}), 400
+        if not active.get("calibration_top") or not active.get("calibration_bottom"):
+            return jsonify({"success": False, "error": "Calibration not set"}), 400
+
+        started = dependencies["start_analysis"](
+            session_id,
+            user_id,
+        )
+        if not started:
+            return jsonify({"success": False, "error": "Could not start processing"}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Processing started",
+            "session_id": session_id,
+        }), 202
+
+    @blueprint.get("/api/progress/<session_id>")
+    @coach_required
+    def get_progress(session_id):
+        user_id = browser_session["user_id"]
+        persisted = dependencies["get_persisted_session"](session_id, user_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+
+        active = dependencies["sessions"].get(session_id)
+        if not active:
+            return jsonify({"success": False, "error": "Session is not active"}), 409
+        synced = dependencies["update_session_progress"](
+            session_id,
+            user_id,
+            active["progress"],
+            status="failed" if active["status"] == "error" else active["status"],
+            error_message=active.get("error"),
+        )
+        return jsonify({
+            "success": True,
+            "status": synced.get("status", active["status"]) if synced else active["status"],
+            "progress": synced.get("progress", active["progress"]) if synced else active["progress"],
+            "error": synced.get("error_message") if synced else active.get("error"),
+        }), 200
+
+    @blueprint.get("/api/results/<session_id>")
+    @coach_required
+    def get_results(session_id):
+        user_id = browser_session["user_id"]
+        persisted = dependencies["get_persisted_session"](session_id, user_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+
+        if persisted.get("status") != "completed":
+            return jsonify({
+                "success": False,
+                "error": f"Analysis not completed. Status: {persisted.get('status')}",
+            }), 400
+
+        metric_rows = dependencies["get_metric_results"](session_id, user_id)
+        file_rows = dependencies["get_generated_files"](session_id, user_id)
+        results = {
+            row["metric_name"]: row.get("raw_result")
+            for row in metric_rows
+            if row.get("raw_result") is not None
+        }
+        results["videos"] = {
+            row["file_type"]: row["file_path"]
+            for row in file_rows
+            if row["file_type"].lower().endswith((".mp4", ".webm", ".mov"))
+        }
+        results["generated_files"] = file_rows
+        return jsonify({
+            "success": True,
+            "session": persisted,
+            "results": dependencies["sanitize_for_json"](results),
+        }), 200
+
     @blueprint.get("/api/calibration/preview/<session_id>")
     @coach_required
     def calibration_preview(session_id):
