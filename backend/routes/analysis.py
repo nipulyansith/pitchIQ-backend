@@ -1,6 +1,10 @@
 """Analysis workflow routes."""
 
-from flask import Blueprint, jsonify, request, session as browser_session
+import math
+from pathlib import Path
+
+import cv2
+from flask import Blueprint, jsonify, request, send_file, session as browser_session
 
 from backend.services.file_service import save_video_upload
 
@@ -94,6 +98,102 @@ def create_analysis_blueprint(*, dependencies, coach_required):
             "message": f"Bowling arm set to {arm}",
             "session_id": session_id,
             "front_knee": front_knee,
+        }), 200
+
+    @blueprint.get("/api/calibration/preview/<session_id>")
+    @coach_required
+    def calibration_preview(session_id):
+        user_id = browser_session["user_id"]
+        persisted = dependencies["get_persisted_session"](session_id, user_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+
+        video_path = persisted.get("video_path")
+        if not video_path or not Path(video_path).is_file():
+            return jsonify({"success": False, "error": "No video uploaded"}), 400
+
+        capture = cv2.VideoCapture(video_path)
+        try:
+            ok, frame = capture.read()
+        finally:
+            capture.release()
+        if not ok or frame is None:
+            return jsonify({"success": False, "error": "Could not read first frame"}), 500
+
+        preview_dir = dependencies["results_dir"] / session_id
+        preview_dir.mkdir(parents=True, exist_ok=True)
+        preview_path = preview_dir / "calibration_preview.jpg"
+        if not cv2.imwrite(str(preview_path), frame):
+            return jsonify({"success": False, "error": "Could not create calibration preview"}), 500
+        return send_file(str(preview_path), mimetype="image/jpeg"), 200
+
+    @blueprint.post("/api/calibration/<session_id>")
+    @coach_required
+    def save_calibration(session_id):
+        user_id = browser_session["user_id"]
+        persisted = dependencies["get_persisted_session"](session_id, user_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+        if not persisted.get("video_path") or not Path(persisted["video_path"]).is_file():
+            return jsonify({"success": False, "error": "No video uploaded"}), 400
+
+        data = request.get_json(silent=True) or {}
+        top = data.get("top")
+        bottom = data.get("bottom")
+        if not isinstance(top, dict) or not isinstance(bottom, dict):
+            return jsonify({"success": False, "error": "Missing calibration points"}), 400
+
+        try:
+            top_x, top_y = int(round(float(top["x"]))), int(round(float(top["y"])))
+            bottom_x, bottom_y = int(round(float(bottom["x"]))), int(round(float(bottom["y"])))
+            stump_height = float(data.get("stump_height_m", 0.711))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return jsonify({"success": False, "error": "Calibration points must contain numeric x and y values"}), 400
+
+        if stump_height <= 0 or not math.isfinite(stump_height):
+            return jsonify({"success": False, "error": "stump_height_m must be greater than zero"}), 400
+
+        pixel_distance = math.hypot(bottom_x - top_x, bottom_y - top_y)
+        if pixel_distance <= 0:
+            return jsonify({"success": False, "error": "Calibration points must be different"}), 400
+
+        meters_per_pixel = stump_height / pixel_distance
+        calibration = dependencies["upsert_calibration"](
+            session_id,
+            user_id,
+            top_x,
+            top_y,
+            bottom_x,
+            bottom_y,
+            pixel_distance,
+            stump_height,
+            meters_per_pixel,
+        )
+        if not calibration:
+            return jsonify({"success": False, "error": "Session not found"}), 404
+
+        updated = dependencies["update_persisted_session"](
+            session_id, user_id, status="calibrated"
+        )
+        if session_id in dependencies["sessions"]:
+            active = dependencies["sessions"][session_id]
+            active["calibration_top"] = (top_x, top_y)
+            active["calibration_bottom"] = (bottom_x, bottom_y)
+            active["status"] = "calibrated"
+
+        return jsonify({
+            "success": True,
+            "message": "Calibration saved successfully",
+            "session_id": session_id,
+            "calibration": {
+                "top": {"x": top_x, "y": top_y},
+                "bottom": {"x": bottom_x, "y": bottom_y},
+                "stump_height_m": stump_height,
+                "pixel_distance": pixel_distance,
+                "pixels_per_meter": 1 / meters_per_pixel,
+                "meters_per_pixel": meters_per_pixel,
+            },
+            "session": updated,
         }), 200
 
     return blueprint

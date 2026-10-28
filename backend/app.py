@@ -37,6 +37,7 @@ from backend.database import (
     get_user_by_id,
     initialize_database,
     list_analysis_sessions,
+    upsert_calibration,
     update_analysis_session,
 )
 from backend.routes.auth import auth_bp
@@ -238,8 +239,10 @@ app.register_blueprint(
         dependencies={
             "get_persisted_session": get_analysis_session,
             "update_persisted_session": update_analysis_session,
+            "upsert_calibration": upsert_calibration,
             "sessions": SESSIONS,
             "upload_dir": UPLOAD_DIR,
+            "results_dir": RESULTS_DIR,
             "allowed_extensions": ALLOWED_EXTENSIONS,
             "max_file_size": MAX_FILE_SIZE,
         },
@@ -250,89 +253,6 @@ app.register_blueprint(
 # ============================================================================
 # API Routes - Video Upload
 # ============================================================================
-
-# ============================================================================
-# API Routes - Calibration
-# ============================================================================
-
-@app.route('/api/calibration/preview/<session_id>', methods=['GET'])
-@coach_required
-def api_calibration_preview(session_id):
-    """Get first frame for calibration marking"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    session = SESSIONS[session_id]
-    if not session['video_path']:
-        return jsonify({'success': False, 'error': 'No video uploaded'}), 400
-    
-    try:
-        cap = cv2.VideoCapture(session['video_path'])
-        ok, frame = cap.read()
-        cap.release()
-        
-        if not ok:
-            return jsonify({'success': False, 'error': 'Could not read first frame'}), 500
-        
-        # Save preview image
-        session_path = get_session_path(session_id)
-        preview_path = session_path / 'calibration_preview.jpg'
-        cv2.imwrite(str(preview_path), frame)
-        
-        return send_file(str(preview_path), mimetype='image/jpeg'), 200
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/calibration/<session_id>', methods=['POST'])
-@coach_required
-def api_set_calibration(session_id):
-    """Set calibration points (top and bottom of stump)"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
-    
-    data = request.get_json()
-    
-    if not data or 'top' not in data or 'bottom' not in data:
-        return jsonify({'success': False, 'error': 'Missing calibration points'}), 400
-    
-    top = data.get('top')
-    bottom = data.get('bottom')
-    
-    # Validate points format
-    if not isinstance(top, dict) or 'x' not in top or 'y' not in top:
-        return jsonify({'success': False, 'error': 'Invalid top point format'}), 400
-    
-    if not isinstance(bottom, dict) or 'x' not in bottom or 'y' not in bottom:
-        return jsonify({'success': False, 'error': 'Invalid bottom point format'}), 400
-    
-    # Store calibration points
-    SESSIONS[session_id]['calibration_top'] = (int(top['x']), int(top['y']))
-    SESSIONS[session_id]['calibration_bottom'] = (int(bottom['x']), int(bottom['y']))
-    SESSIONS[session_id]['status'] = 'calibrated'
-    
-    # Calculate calibration parameters
-    pixels_per_meter = calculate_calibration_scale(
-        top['y'], bottom['y'], stump_height=0.711
-    )
-    
-    return jsonify({
-        'success': True,
-        'message': 'Calibration points set successfully',
-        'calibration': {
-            'top': {'x': top['x'], 'y': top['y']},
-            'bottom': {'x': bottom['x'], 'y': bottom['y']},
-            'pixels_per_meter': pixels_per_meter
-        }
-    }), 200
-
-def calculate_calibration_scale(top_y, bottom_y, stump_height=0.711):
-    """Calculate meters per pixel from calibration points"""
-    pixel_distance = abs(bottom_y - top_y)
-    if pixel_distance == 0:
-        return 1.0
-    meters_per_pixel = stump_height / pixel_distance
-    return 1.0 / meters_per_pixel  # pixels per meter
 
 # ============================================================================
 # API Routes - Analysis Processing

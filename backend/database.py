@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS calibrations (
     bottom_x INTEGER NOT NULL,
     bottom_y INTEGER NOT NULL,
     pixel_distance REAL NOT NULL CHECK (pixel_distance > 0),
+    stump_height_m REAL NOT NULL DEFAULT 0.711 CHECK (stump_height_m > 0),
     meters_per_pixel REAL NOT NULL CHECK (meters_per_pixel > 0),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES analysis_sessions(id) ON DELETE CASCADE
@@ -134,6 +135,7 @@ def initialize_database() -> Path:
         _add_column_if_missing(connection, "analysis_sessions", "user_id", "INTEGER")
         _add_column_if_missing(connection, "users", "display_name", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(connection, "users", "role", "TEXT NOT NULL DEFAULT 'coach'")
+        _add_column_if_missing(connection, "calibrations", "stump_height_m", "REAL NOT NULL DEFAULT 0.711")
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_athletes_user_id ON athletes(user_id)"
         )
@@ -438,6 +440,75 @@ def update_analysis_session(
             return None
         row = connection.execute(
             "SELECT * FROM analysis_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_calibration(
+    session_id: str,
+    user_id: int,
+    top_x: int,
+    top_y: int,
+    bottom_x: int,
+    bottom_y: int,
+    pixel_distance: float,
+    stump_height_m: float,
+    meters_per_pixel: float,
+) -> dict[str, Any] | None:
+    """Create or replace calibration data for an owned analysis session."""
+    with database_connection() as connection:
+        session_row = connection.execute(
+            "SELECT id FROM analysis_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+        if not session_row:
+            return None
+
+        connection.execute(
+            """
+            INSERT INTO calibrations (
+                session_id, top_x, top_y, bottom_x, bottom_y,
+                pixel_distance, stump_height_m, meters_per_pixel
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                top_x = excluded.top_x,
+                top_y = excluded.top_y,
+                bottom_x = excluded.bottom_x,
+                bottom_y = excluded.bottom_y,
+                pixel_distance = excluded.pixel_distance,
+                stump_height_m = excluded.stump_height_m,
+                meters_per_pixel = excluded.meters_per_pixel,
+                created_at = CURRENT_TIMESTAMP
+            """,
+            (
+                session_id,
+                top_x,
+                top_y,
+                bottom_x,
+                bottom_y,
+                pixel_distance,
+                stump_height_m,
+                meters_per_pixel,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM calibrations WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_calibration(session_id: str, user_id: int) -> dict[str, Any] | None:
+    """Return calibration data only for a session owned by the coach."""
+    with database_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT c.*
+            FROM calibrations c
+            JOIN analysis_sessions s ON s.id = c.session_id
+            WHERE c.session_id = ? AND s.user_id = ?
+            """,
             (session_id, user_id),
         ).fetchone()
     return dict(row) if row else None
