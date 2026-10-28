@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -512,6 +513,74 @@ def get_calibration(session_id: str, user_id: int) -> dict[str, Any] | None:
             (session_id, user_id),
         ).fetchone()
     return dict(row) if row else None
+
+
+def update_session_progress(
+    session_id: str,
+    user_id: int,
+    progress: int,
+    status: str | None = None,
+    error_message: str | None = None,
+) -> dict[str, Any] | None:
+    """Update progress for an owned analysis session."""
+    if isinstance(progress, bool) or not isinstance(progress, int):
+        raise ValueError("Progress must be an integer")
+    if not 0 <= progress <= 100:
+        raise ValueError("Progress must be between 0 and 100")
+
+    fields: dict[str, Any] = {"progress": progress}
+    if status is not None:
+        fields["status"] = status
+    if error_message is not None:
+        fields["error_message"] = error_message
+    return update_analysis_session(session_id, user_id, **fields)
+
+
+def mark_session_processing(
+    session_id: str,
+    user_id: int,
+) -> dict[str, Any] | None:
+    """Mark an owned session as actively processing."""
+    return update_analysis_session(
+        session_id,
+        user_id,
+        status="processing",
+        progress=0,
+        error_message=None,
+        completed_at=None,
+    )
+
+
+def mark_session_completed(
+    session_id: str,
+    user_id: int,
+    result_path: str | None = None,
+) -> dict[str, Any] | None:
+    """Mark an owned session as completed and record its result location."""
+    return update_analysis_session(
+        session_id,
+        user_id,
+        status="completed",
+        progress=100,
+        result_path=result_path,
+        error_message=None,
+        completed_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def mark_session_failed(
+    session_id: str,
+    user_id: int,
+    error_message: str,
+) -> dict[str, Any] | None:
+    """Mark an owned session as failed and persist a safe error message."""
+    cleaned_error = str(error_message).strip() or "Analysis failed"
+    return update_analysis_session(
+        session_id,
+        user_id,
+        status="failed",
+        error_message=cleaned_error[:2000],
+    )
 
 
 if __name__ == "__main__":
