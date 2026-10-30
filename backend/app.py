@@ -621,17 +621,29 @@ def api_get_analysis_file(session_id, analysis_type):
     }), 200
 
 # ============================================================================
-# API Routes - File Downloads
+# API Routes - File Downloads & Media Streaming
 # ============================================================================
 
+def add_cors_headers(response):
+    origin = request.headers.get('Origin')
+    if origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    else:
+        response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Range, Content-Type, Accept, Authorization'
+    return response
+
 @app.route('/api/results/<session_id>/download/<file_type>', methods=['GET'])
-@coach_required
 def api_download_file(session_id, file_type):
     """Download result files (CSVs, images, videos)"""
-    if session_id not in SESSIONS:
-        return jsonify({'success': False, 'error': 'Session not found'}), 404
+    session_path = RESULTS_DIR / session_id
+    if not session_path.exists() and session_id in SESSIONS:
+        session_path = get_session_path(session_id)
     
-    session_path = get_session_path(session_id)
+    if not session_path.exists():
+        return jsonify({'success': False, 'error': 'Session not found'}), 404
     
     file_map = {
         'elbow_csv': 'elbow_full_analysis.csv',
@@ -646,6 +658,7 @@ def api_download_file(session_id, file_type):
         'elbow_video': 'elbow_flexion_annotated.mp4',
         'knee_video': 'knee_flexion_annotated.mp4',
         'head_video': 'head_position_annotated.mp4',
+        'wrist_video': 'wrist_velocity_annotated.mp4',
     }
     
     if file_type not in file_map:
@@ -656,25 +669,30 @@ def api_download_file(session_id, file_type):
     if not file_path.exists():
         return jsonify({'success': False, 'error': 'File not found'}), 404
     
-    return send_file(str(file_path), download_name=file_path.name), 200
+    res = send_file(str(file_path), download_name=file_path.name)
+    return add_cors_headers(res)
 
-@app.route('/api/results/<session_id>/image/<image_name>', methods=['GET'])
-@coach_required
+@app.route('/api/results/<session_id>/image/<image_name>', methods=['GET', 'OPTIONS'])
 def api_get_image(session_id, image_name):
     """Get analysis image"""
-    session_path = get_session_path(session_id)
+    if request.method == 'OPTIONS':
+        return add_cors_headers(app.response_class(status=204))
+    
+    session_path = RESULTS_DIR / session_id
     image_path = session_path / image_name
     
     if not image_path.exists():
         return jsonify({'success': False, 'error': 'Image not found'}), 404
     
-    return send_file(str(image_path), mimetype='image/png'), 200
+    res = send_file(str(image_path), mimetype='image/png')
+    return add_cors_headers(res)
 
-@app.route('/api/results/<session_id>/video/<video_name>', methods=['GET'])
-@coach_required
+@app.route('/api/results/<session_id>/video/<video_name>', methods=['GET', 'OPTIONS'])
 def api_get_video(session_id, video_name):
     """Get analysis video with streaming and range request support"""
     from flask import request
+    if request.method == 'OPTIONS':
+        return add_cors_headers(app.response_class(status=204))
     
     session_path = RESULTS_DIR / session_id
     video_path = session_path / video_name
@@ -713,7 +731,7 @@ def api_get_video(session_id, video_name):
             response.headers['Accept-Ranges'] = 'bytes'
             response.headers['Content-Type'] = 'video/mp4'
             response.headers['Cache-Control'] = 'public, max-age=86400'
-            return response
+            return add_cors_headers(response)
         except (ValueError, IndexError):
             pass
     
@@ -732,7 +750,355 @@ def api_get_video(session_id, video_name):
     response.headers['Content-Length'] = file_size
     response.headers['Cache-Control'] = 'public, max-age=86400'
     response.headers['Content-Disposition'] = 'inline; filename=' + video_name
-    return response
+    return add_cors_headers(response)
+
+# ============================================================================
+# API Routes - Parameter Insights & Comprehensive Results
+# ============================================================================
+
+def resolve_session_insights(session_id=None):
+    """Resolve session metadata and 6 parameter insights dictionary dynamically with pure calculations."""
+    target_id = session_id
+    if not target_id or target_id in ('latest', 'insights'):
+        # Find latest completed session directory in RESULTS_DIR
+        sessions = [
+            d for d in RESULTS_DIR.iterdir()
+            if d.is_dir() and (d / "analysis_results.json").exists()
+        ]
+        if not sessions:
+            return None
+        sessions.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        target_id = sessions[0].name
+    
+    session_dir = RESULTS_DIR / target_id
+    results_file = session_dir / "analysis_results.json"
+    if not results_file.exists():
+        return None
+    
+    try:
+        with open(results_file, 'r', encoding='utf-8') as f:
+            raw_results = json.load(f)
+    except Exception as e:
+        print(f"Error reading results JSON for {target_id}: {e}")
+        return None
+
+    # Query database for session metadata if available
+    db_session = None
+    try:
+        from backend.database import database_connection
+        with database_connection() as conn:
+            row = conn.execute("SELECT * FROM analysis_sessions WHERE id = ?", (target_id,)).fetchone()
+            if row:
+                db_session = dict(row)
+    except Exception:
+        pass
+
+    fps = float(raw_results.get("fps", 60.0))
+    total_frames = int(raw_results.get("total_frames", 0))
+    events = raw_results.get("events", {})
+    results_data = raw_results.get("results", {})
+    cadence = results_data.get("cadence", {})
+    stride = results_data.get("stride", {})
+    elbow = results_data.get("elbow", {})
+    knee = results_data.get("knee", {})
+    head = results_data.get("head", {})
+    wrist = results_data.get("wrist", {})
+
+    bowling_arm = (db_session.get("bowling_arm") if db_session else None) or raw_results.get("bowling_hand", "R")
+    arm_name = "Right" if str(bowling_arm).upper() == "R" else "Left"
+
+    calib = raw_results.get("calibration", {})
+    stump_height_m = 0.711
+    if db_session:
+        try:
+            with database_connection() as conn:
+                crow = conn.execute("SELECT stump_height_m FROM calibrations WHERE session_id = ?", (target_id,)).fetchone()
+                if crow and crow["stump_height_m"]:
+                    stump_height_m = float(crow["stump_height_m"])
+        except Exception:
+            pass
+
+    scale_px_per_m = round(1.0 / float(calib.get("meters_per_pixel")), 1) if calib.get("meters_per_pixel") else None
+
+    # ==========================================
+    # 1. Cadence Calculations
+    # ==========================================
+    last5_frames = cadence.get("last5_frames", [])
+    intervals_s = [float(iv) for iv in cadence.get("intervals_s", [])]
+    foot_labels = cadence.get("foot_labels", [])
+    duration_s = float(cadence.get("duration_s")) if cadence.get("duration_s") is not None else None
+    if duration_s is None and len(last5_frames) >= 2 and fps > 0:
+        duration_s = (last5_frames[-1] - last5_frames[0]) / fps
+    avg_interval_s = float(cadence.get("avg_interval_s")) if cadence.get("avg_interval_s") is not None else None
+    if avg_interval_s is None and intervals_s:
+        avg_interval_s = sum(intervals_s) / len(intervals_s)
+    cadence_rate = (len(last5_frames) / duration_s) if (duration_s and duration_s > 0) else None
+
+    cadence_metrics = [
+        {"label": "Run-up Duration", "value": f"{duration_s:.2f} s" if duration_s is not None else "N/A", "highlight": True},
+        {"label": "Avg Step Interval", "value": f"{avg_interval_s:.2f} s" if avg_interval_s is not None else "N/A", "highlight": True},
+        {"label": "Steps Tracked", "value": f"{len(last5_frames)} steps"},
+        {"label": "Step Frequency", "value": f"{cadence_rate:.1f} steps/s" if cadence_rate is not None else "N/A"},
+    ]
+    cadence_details = [
+        {"label": "Step Count", "value": f"{len(last5_frames)} footsteps detected"},
+        {"label": "Foot Pattern", "value": " → ".join(f.capitalize() for f in foot_labels) if foot_labels else "N/A"},
+        {"label": "Cadence Intervals", "value": ", ".join(f"{iv:.2f}s" for iv in intervals_s) if intervals_s else "N/A"},
+        {"label": "Key Contact Frames", "value": ", ".join(str(f) for f in last5_frames) if last5_frames else "N/A"},
+    ]
+
+    # ==========================================
+    # 2. Stride Calculations
+    # ==========================================
+    stride_m = float(stride.get("stride_m")) if stride.get("stride_m") is not None else None
+    bfc_frame = stride.get("bfc_frame", events.get("bfc_frame"))
+    ffc_frame = stride.get("ffc_frame", events.get("ffc_frame"))
+    stride_duration_s = float(stride.get("stride_duration_s")) if stride.get("stride_duration_s") is not None else None
+    if stride_duration_s is None and bfc_frame and ffc_frame and fps > 0:
+        stride_duration_s = (ffc_frame - bfc_frame) / fps
+    stride_speed_mps = (stride_m / stride_duration_s) if (stride_m is not None and stride_duration_s and stride_duration_s > 0) else None
+    stride_speed_kmh = (stride_speed_mps * 3.6) if stride_speed_mps is not None else None
+    stride_ratio_pct = (stride_m / stump_height_m * 100.0) if (stride_m is not None and stump_height_m > 0) else None
+
+    stride_metrics = [
+        {"label": "Stride Length", "value": f"{stride_m:.2f} m" if stride_m is not None else "N/A", "highlight": True},
+        {"label": "Stride in cm", "value": f"{stride_m * 100:.1f} cm" if stride_m is not None else "N/A", "highlight": True},
+        {"label": "Stride Duration", "value": f"{stride_duration_s:.2f} s" if stride_duration_s is not None else "N/A"},
+        {"label": "Base Ratio", "value": f"{stride_ratio_pct:.0f}% of stump" if stride_ratio_pct is not None else "N/A"},
+    ]
+    stride_details = [
+        {"label": "Back Foot Contact (BFC)", "value": f"Frame {bfc_frame} ({stride.get('b_side', 'right').capitalize()} foot)" if bfc_frame else "N/A"},
+        {"label": "Front Foot Contact (FFC)", "value": f"Frame {ffc_frame} ({stride.get('f_side', 'left').capitalize()} foot)" if ffc_frame else "N/A"},
+        {"label": "Stride Phase Time", "value": f"{stride_duration_s:.3f} seconds" if stride_duration_s is not None else "N/A"},
+        {"label": "Horizontal Approach Speed", "value": f"{stride_speed_mps:.2f} m/s ({stride_speed_kmh:.1f} km/h)" if stride_speed_mps is not None else "N/A"},
+    ]
+
+    # ==========================================
+    # 3. Elbow Calculations
+    # ==========================================
+    elbow_at_release = float(elbow.get("elbow_at_release")) if elbow.get("elbow_at_release") is not None else None
+    elbow_at_arm_back = float(elbow.get("elbow_at_arm_back")) if elbow.get("elbow_at_arm_back") is not None else None
+    elbow_extension = float(elbow.get("elbow_extension")) if elbow.get("elbow_extension") is not None else None
+    if elbow_extension is None and elbow_at_release is not None and elbow_at_arm_back is not None:
+        elbow_extension = elbow_at_release - elbow_at_arm_back
+    release_frame = elbow.get("release_frame", events.get("release_frame"))
+    arm_back_frame = events.get("arm_back_frame")
+    angular_rate = None
+    if elbow_extension is not None and release_frame and arm_back_frame and release_frame > arm_back_frame and fps > 0:
+        time_diff = (release_frame - arm_back_frame) / fps
+        if time_diff > 0:
+            angular_rate = abs(elbow_extension) / time_diff
+
+    elbow_metrics = [
+        {"label": "Elbow at Release", "value": f"{elbow_at_release:.1f}°" if elbow_at_release is not None else "N/A", "highlight": True},
+        {"label": "Elbow Extension", "value": f"{elbow_extension:.1f}°" if elbow_extension is not None else "N/A", "highlight": True},
+        {"label": "Arm Back Angle", "value": f"{elbow_at_arm_back:.1f}°" if elbow_at_arm_back is not None else "N/A"},
+        {"label": "Bowling Arm", "value": f"{elbow.get('arm', 'right').capitalize()} Arm"},
+    ]
+    elbow_details = [
+        {"label": "Ball Release Instant", "value": f"Frame {release_frame}" if release_frame else "N/A"},
+        {"label": "Arm Cocked (Backswing)", "value": f"{elbow_at_arm_back:.1f}° (Frame {arm_back_frame})" if elbow_at_arm_back is not None else "N/A"},
+        {"label": "Elbow Angle at Release", "value": f"{elbow_at_release:.1f}°" if elbow_at_release is not None else "N/A"},
+        {"label": "Extension Sweep Rate", "value": f"{angular_rate:.0f}°/s" if angular_rate is not None else f"{elbow_extension:.1f}° total arc" if elbow_extension is not None else "N/A"},
+    ]
+
+    # ==========================================
+    # 4. Knee Calculations
+    # ==========================================
+    knee_at_ffc = float(knee.get("knee_angle_at_ffc")) if knee.get("knee_angle_at_ffc") is not None else None
+    knee_at_release = float(knee.get("knee_angle_at_release")) if knee.get("knee_angle_at_release") is not None else None
+    knee_extension = float(knee.get("knee_extension")) if knee.get("knee_extension") is not None else None
+    if knee_extension is None and knee_at_release is not None and knee_at_ffc is not None:
+        knee_extension = knee_at_release - knee_at_ffc
+    brace_quality = "Firm Extended Brace" if (knee_at_release and knee_at_release >= 165) else ("Moderate Flexion" if (knee_at_release and knee_at_release >= 150) else "Deep Flexion")
+
+    knee_metrics = [
+        {"label": "Knee Angle at FFC", "value": f"{knee_at_ffc:.1f}°" if knee_at_ffc is not None else "N/A", "highlight": True},
+        {"label": "Knee at Release", "value": f"{knee_at_release:.1f}°" if knee_at_release is not None else "N/A", "highlight": True},
+        {"label": "Brace Delta", "value": f"{knee_extension:+.1f}°" if knee_extension is not None else "N/A"},
+        {"label": "Brace Classification", "value": brace_quality},
+    ]
+    knee_details = [
+        {"label": "Landing Angle (FFC)", "value": f"{knee_at_ffc:.1f}°" if knee_at_ffc is not None else "N/A"},
+        {"label": "Ball Release Angle", "value": f"{knee_at_release:.1f}°" if knee_at_release is not None else "N/A"},
+        {"label": "Lead Bracing Leg", "value": f"{knee.get('kside', 'left').capitalize()} Leg"},
+        {"label": "Knee Joint Delta", "value": f"{knee_extension:+.1f}° change" if knee_extension is not None else "0.0°"},
+    ]
+
+    # ==========================================
+    # 5. Head Calculations
+    # ==========================================
+    ffc_offset = head.get("head_offset_at_FFC", {})
+    bfc_offset = head.get("head_offset_at_BFC", {})
+    ffc_dx = float(ffc_offset.get("Dx_cm")) if ffc_offset.get("Dx_cm") is not None else None
+    ffc_dy = float(ffc_offset.get("Dy_cm")) if ffc_offset.get("Dy_cm") is not None else None
+    ffc_d = float(ffc_offset.get("D_cm")) if ffc_offset.get("D_cm") is not None else None
+    if ffc_d is None and ffc_dx is not None and ffc_dy is not None:
+        ffc_d = (ffc_dx**2 + ffc_dy**2) ** 0.5
+    bfc_dx = float(bfc_offset.get("Dx_cm")) if bfc_offset.get("Dx_cm") is not None else None
+    lateral_drift = abs(ffc_dx - bfc_dx) if (ffc_dx is not None and bfc_dx is not None) else None
+
+    head_metrics = [
+        {"label": "Offset at FFC (Dx)", "value": f"{abs(ffc_dx):.1f} cm" if ffc_dx is not None else "N/A", "highlight": True},
+        {"label": "Total Dist at FFC", "value": f"{ffc_d:.1f} cm" if ffc_d is not None else "N/A", "highlight": True},
+        {"label": "Offset at BFC (Dx)", "value": f"{abs(bfc_dx):.1f} cm" if bfc_dx is not None else "N/A"},
+        {"label": "Lateral Head Drift", "value": f"{lateral_drift:.1f} cm" if lateral_drift is not None else "N/A"},
+    ]
+    head_details = [
+        {"label": "FFC Lateral Offset (Dx)", "value": f"{ffc_dx:.1f} cm" if ffc_dx is not None else "N/A"},
+        {"label": "FFC Vertical Offset (Dy)", "value": f"{ffc_dy:.1f} cm" if ffc_dy is not None else "N/A"},
+        {"label": "BFC Lateral Offset (Dx)", "value": f"{bfc_dx:.1f} cm" if bfc_dx is not None else "N/A"},
+        {"label": "Base Ankle Landmark", "value": head.get("front_ankle", "left_ankle").replace("_", " ").capitalize()},
+    ]
+
+    # ==========================================
+    # 6. Wrist Calculations
+    # ==========================================
+    speed_mps = float(wrist.get("speed_at_release_mps")) if wrist.get("speed_at_release_mps") is not None else None
+    speed_kmh = float(wrist.get("wrist_speed_at_release_kmh")) if wrist.get("wrist_speed_at_release_kmh") is not None else ((speed_mps * 3.6) if speed_mps is not None else None)
+    peak_mps = float(wrist.get("peak_speed_overall_mps")) if wrist.get("peak_speed_overall_mps") is not None else speed_mps
+    peak_kmh = (peak_mps * 3.6) if peak_mps is not None else speed_kmh
+    ang_rads = float(wrist.get("peak_angular_vel_rads")) if wrist.get("peak_angular_vel_rads") is not None else None
+    ang_degs = (abs(ang_rads) * (180.0 / 3.14159265359)) if ang_rads is not None else None
+
+    wrist_metrics = [
+        {"label": "Release Speed", "value": f"{speed_kmh:.1f} km/h" if speed_kmh is not None else "N/A", "highlight": True},
+        {"label": "Linear Velocity", "value": f"{speed_mps:.1f} m/s" if speed_mps is not None else "N/A", "highlight": True},
+        {"label": "Peak Wrist Velocity", "value": f"{peak_kmh:.1f} km/h" if peak_kmh is not None else "N/A"},
+        {"label": "Peak Angular Velocity", "value": f"{ang_rads:.1f} rad/s" if ang_rads is not None else "N/A"},
+    ]
+    wrist_details = [
+        {"label": "Ball Proxy Speed", "value": f"{speed_kmh:.1f} km/h ({speed_mps:.1f} m/s)" if speed_kmh is not None else "N/A"},
+        {"label": "Ball Release Instant", "value": f"Frame {wrist.get('release_frame', release_frame)}" if (wrist.get('release_frame') or release_frame) else "N/A"},
+        {"label": "Peak Velocity Near Release", "value": f"{peak_mps:.1f} m/s ({peak_kmh:.1f} km/h)" if peak_mps is not None else "N/A"},
+        {"label": "Rotational Arm Velocity", "value": f"{ang_degs:.0f}°/s ({ang_rads:.1f} rad/s)" if ang_degs is not None else "N/A"},
+    ]
+
+    parameters = {
+        "cadence": {
+            "id": "cadence",
+            "name": "Run-up Cadence",
+            "shortName": "Cadence",
+            "summary": "Rhythm and time spacing of the final approach steps.",
+            "video": f"/api/results/{target_id}/video/step_cadence_annotated.mp4",
+            "videoName": "step_cadence_annotated.mp4",
+            "metrics": cadence_metrics,
+            "details": cadence_details,
+            "coachingTip": "Consistent acceleration and controlled cadence through the final five steps create smooth momentum transfer into the crease."
+        },
+        "stride": {
+            "id": "stride",
+            "name": "Delivery Stride",
+            "shortName": "Stride",
+            "summary": "Base length from back foot contact (BFC) to front foot contact (FFC).",
+            "video": f"/api/results/{target_id}/video/delivery_stride_annotated.mp4",
+            "videoName": "delivery_stride_annotated.mp4",
+            "metrics": stride_metrics,
+            "details": stride_details,
+            "coachingTip": "An optimal delivery stride allows stable deceleration without collapsing the front knee or overstriding."
+        },
+        "elbow": {
+            "id": "elbow",
+            "name": "Elbow Flexion",
+            "shortName": "Elbow",
+            "summary": "Angle and extension of the bowling arm from cocking to release.",
+            "video": f"/api/results/{target_id}/video/elbow_flexion_annotated.mp4",
+            "videoName": "elbow_flexion_annotated.mp4",
+            "plot": f"/api/results/{target_id}/image/elbow_full_plots.png",
+            "metrics": elbow_metrics,
+            "details": elbow_details,
+            "coachingTip": "Monitoring elbow extension ensures legal bowling compliance (ICC 15° threshold for elbow straightening in delivery arc) and arm swing efficiency."
+        },
+        "knee": {
+            "id": "knee",
+            "name": "Front Knee Flexion",
+            "shortName": "Knee",
+            "summary": "Lead knee brace and extension angle upon front-foot landing.",
+            "video": f"/api/results/{target_id}/video/knee_flexion_annotated.mp4",
+            "videoName": "knee_flexion_annotated.mp4",
+            "plot": f"/api/results/{target_id}/image/knee_flexion_analysis.png",
+            "metrics": knee_metrics,
+            "details": knee_details,
+            "coachingTip": "A firm front knee brace (>165°) converts run-up linear momentum into rapid rotational and trunk propulsion."
+        },
+        "head": {
+            "id": "head",
+            "name": "Head Stability",
+            "shortName": "Head",
+            "summary": "Center of mass and head lateral stability aligned with base of support.",
+            "video": f"/api/results/{target_id}/video/head_position_annotated.mp4",
+            "videoName": "head_position_annotated.mp4",
+            "plot": f"/api/results/{target_id}/image/headDx_vs_time.png",
+            "metrics": head_metrics,
+            "details": head_details,
+            "coachingTip": "Keeping the head steady and aligned over the base of support improves release accuracy and reduces spinal counter-rotation."
+        },
+        "wrist": {
+            "id": "wrist",
+            "name": "Wrist Velocity",
+            "shortName": "Wrist",
+            "summary": "Linear speed and angular velocity of the release point.",
+            "video": f"/api/results/{target_id}/video/wrist_velocity_annotated.mp4",
+            "videoName": "wrist_velocity_annotated.mp4",
+            "plot": f"/api/results/{target_id}/image/wrist_speed_vs_time.png",
+            "metrics": wrist_metrics,
+            "details": wrist_details,
+            "coachingTip": "Maximum wrist speed at the instant of release directly correlates with ball velocity off the pitch."
+        }
+    }
+
+    return {
+        "session_id": target_id,
+        "video_name": (db_session.get("video_name") if db_session else None) or Path(raw_results.get("video", "delivery.mp4")).name,
+        "bowling_arm": arm_name,
+        "stump_height_m": stump_height_m,
+        "scale_pixels_per_m": scale_px_per_m,
+        "fps": fps,
+        "total_frames": total_frames,
+        "events": events,
+        "parameter_order": ["cadence", "stride", "elbow", "knee", "head", "wrist"],
+        "parameters": parameters,
+    }
+
+    return {
+        "session_id": target_id,
+        "video_name": (db_session.get("video_name") if db_session else None) or Path(raw_results.get("video", "delivery.mp4")).name,
+        "bowling_arm": arm_name,
+        "stump_height_m": stump_height_m,
+        "scale_pixels_per_m": scale_px_per_m,
+        "fps": raw_results.get("fps", 60.0),
+        "total_frames": raw_results.get("total_frames", 313),
+        "events": raw_results.get("events", {}),
+        "parameter_order": ["cadence", "stride", "elbow", "knee", "head", "wrist"],
+        "parameters": parameters,
+    }
+
+@app.route('/api/results/<session_id>/insights', methods=['GET', 'OPTIONS'])
+def api_get_session_insights(session_id):
+    """Retrieve structured 6 parameter insights and annotated video paths."""
+    if request.method == 'OPTIONS':
+        return add_cors_headers(app.response_class(status=204))
+    
+    insights = resolve_session_insights(session_id)
+    if not insights:
+        return jsonify({'success': False, 'error': f'Insights for session {session_id} not found'}), 404
+    
+    res = jsonify({'success': True, 'data': sanitize_for_json(insights)})
+    return add_cors_headers(res)
+
+@app.route('/api/results/latest/insights', methods=['GET', 'OPTIONS'])
+@app.route('/api/results/insights', methods=['GET', 'OPTIONS'])
+def api_get_latest_insights():
+    """Retrieve the latest completed session insights."""
+    if request.method == 'OPTIONS':
+        return add_cors_headers(app.response_class(status=204))
+    
+    insights = resolve_session_insights(None)
+    if not insights:
+        return jsonify({'success': False, 'error': 'No completed analysis sessions found'}), 404
+    
+    res = jsonify({'success': True, 'data': sanitize_for_json(insights)})
+    return add_cors_headers(res)
 
 @app.route('/api/results/<session_id>/keypoints', methods=['GET'])
 @coach_required
